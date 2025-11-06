@@ -2512,6 +2512,25 @@ class HfDatasetDataset(BaseDataset):
                 image_key = f"hf_{subset.hf_dataset}_{idx}"
                 image_info = ImageInfo(image_key, subset.num_repeats, caption, False, "")
                 image_info.hf_image = image  # Store HF image object
+                
+                # Get image size directly from HF image object
+                if hasattr(image, 'size'):
+                    # PIL Image has size attribute (width, height)
+                    image_info.image_size = image.size
+                elif hasattr(image, 'width') and hasattr(image, 'height'):
+                    # Some image objects have width/height attributes
+                    image_info.image_size = (image.width, image.height)
+                else:
+                    # Fallback: try to get size
+                    try:
+                        from PIL import Image as PILImage
+                        if hasattr(image, 'shape'):  # numpy array
+                            image_info.image_size = (image.shape[1], image.shape[0])  # (width, height)
+                        else:
+                            image_info.image_size = None
+                    except:
+                        image_info.image_size = None
+                
                 image_infos.append(image_info)
         
         logger.info(f"loaded {len(image_infos)} images from HuggingFace dataset")
