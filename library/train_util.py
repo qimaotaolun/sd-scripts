@@ -620,11 +620,14 @@ class HfDatasetSubset(BaseSubset):
         token_warmup_min,
         token_warmup_step,
         cache_info,
+        alpha_mask: bool,
         image_dir=None,
     ):
         assert hf_dataset is not None, "hf_dataset must be specified / hf_datasetは指定が必須です"
 
         super().__init__(
+            image_dir, 
+            alpha_mask,
             num_repeats,
             shuffle_caption,
             caption_separator,
