@@ -142,12 +142,12 @@ TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = "_te_outputs.npz"
 
 
 class ImageInfo:
-    def __init__(self, image_key: str, num_repeats: int, caption: str, is_reg: bool, absolute_path: str) -> None:
+    def __init__(self, image_key: str, num_repeats: int, caption: str, is_reg: bool, absolute_path: Union[str, Image.Image, np.ndarray]) -> None:
         self.image_key: str = image_key
         self.num_repeats: int = num_repeats
         self.caption: str = caption
         self.is_reg: bool = is_reg
-        self.absolute_path: str = absolute_path
+        self.absolute_path: Union[str, Image.Image, np.ndarray] = absolute_path
         self.image_size: Tuple[int, int] = None
         self.resized_size: Tuple[int, int] = None
         self.bucket_reso: Tuple[int, int] = None
@@ -2300,7 +2300,8 @@ class HfDatasetDataset(BaseDataset):
                     # Save image temporarily or use image directly
                     # For now, we'll create an ImageInfo with the HF dataset index as key
                     image_key = f"hf_{subset.hf_dataset}_{idx}"
-                    image_info = ImageInfo(image_key, subset.num_repeats, caption, False, "")
+                    # Store HF image object in absolute_path for make_buckets to use
+                    image_info = ImageInfo(image_key, subset.num_repeats, caption, False, image)
                     image_info.hf_image = image  # Store HF image object
                     image_infos.append(image_info)
             
@@ -2317,6 +2318,31 @@ class HfDatasetDataset(BaseDataset):
                 self.register_image(img_info, subset)
 
         logger.info(f"total HuggingFace dataset image count: {len(self.image_data)}")
+
+    def get_image_size(self, image_path):
+        """
+        Override get_image_size for HfDataset to handle non-file-path data.
+        For HfDataset, image_path (info.absolute_path) might be a PIL Image object or numpy array.
+        """
+        from PIL import Image
+        import numpy as np
+        
+        # If it's a string (file path), use the parent class method
+        if isinstance(image_path, str):
+            return super().get_image_size(image_path)
+        
+        # Handle PIL Image objects
+        if isinstance(image_path, Image.Image):
+            return image_path.size  # Returns (width, height)
+        
+        # Handle numpy arrays
+        if isinstance(image_path, np.ndarray):
+            # Assuming image shape is (H, W, C) or (H, W)
+            if len(image_path.shape) >= 2:
+                return (image_path.shape[1], image_path.shape[0])  # Return (width, height)
+        
+        # If we can't determine the size, raise an error
+        raise ValueError(f"Unable to determine image size for type: {type(image_path)}")
 
     def __getitem__(self, index):
         # Similar to FineTuningDataset but adapted for HF datasets
