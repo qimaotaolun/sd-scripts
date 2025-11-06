@@ -620,10 +620,12 @@ class HfDatasetSubset(BaseSubset):
         token_warmup_min,
         token_warmup_step,
         cache_info,
-        alpha_mask: bool=False,
+        metadata_file: str,
+        alpha_mask: bool,
         image_dir=None,
     ):
         assert hf_dataset is not None, "hf_dataset must be specified / hf_datasetは指定が必須です"
+        assert metadata_file is not None, "metadata_file must be specified / metadata_fileは指定が必須です"
 
         super().__init__(
             image_dir, 
@@ -651,6 +653,7 @@ class HfDatasetSubset(BaseSubset):
         self.hf_dataset = hf_dataset
         self.cache_info = cache_info
         self.image_dir = image_dir
+        self.metadata_file = metadata_file
 
     def __eq__(self, other) -> bool:
         return self.hf_dataset == other.hf_dataset

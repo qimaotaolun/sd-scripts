@@ -107,6 +107,8 @@ class ControlNetSubsetParams(BaseSubsetParams):
 class HfDatasetSubsetParams(BaseSubsetParams):
     hf_dataset: str = None
     cache_info: bool = False
+    metadata_file: Optional[str] = None
+    alpha_mask: bool = False
 
 
 @dataclass
