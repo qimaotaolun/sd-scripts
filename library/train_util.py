@@ -2468,7 +2468,7 @@ class HfDatasetDataset(BaseDataset):
             npz_file_flip = None
 
         return npz_file_norm, npz_file_flip
-    def load_hf_dataset(subset: HfDatasetSubset):
+    def load_hf_dataset(self,subset: HfDatasetSubset):
         try:
             from datasets import load_dataset
         except ImportError:
