@@ -597,6 +597,62 @@ class ControlNetSubset(BaseSubset):
             return NotImplemented
         return self.image_dir == other.image_dir and self.conditioning_data_dir == other.conditioning_data_dir
 
+class HfDatasetSubset(BaseSubset):
+    def __init__(
+        self,
+        hf_dataset,
+        num_repeats,
+        shuffle_caption,
+        caption_separator,
+        keep_tokens,
+        keep_tokens_separator,
+        secondary_separator,
+        enable_wildcard,
+        color_aug,
+        flip_aug,
+        face_crop_aug_range,
+        random_crop,
+        caption_dropout_rate,
+        caption_dropout_every_n_epochs,
+        caption_tag_dropout_rate,
+        caption_prefix,
+        caption_suffix,
+        token_warmup_min,
+        token_warmup_step,
+        cache_info,
+        image_dir=None,
+    ):
+        assert hf_dataset is not None, "hf_dataset must be specified / hf_datasetは指定が必須です"
+
+        super().__init__(
+            num_repeats,
+            shuffle_caption,
+            caption_separator,
+            keep_tokens,
+            keep_tokens_separator,
+            secondary_separator,
+            enable_wildcard,
+            color_aug,
+            flip_aug,
+            face_crop_aug_range,
+            random_crop,
+            caption_dropout_rate,
+            caption_dropout_every_n_epochs,
+            caption_tag_dropout_rate,
+            caption_prefix,
+            caption_suffix,
+            token_warmup_min,
+            token_warmup_step,
+        )
+
+        self.hf_dataset = hf_dataset
+        self.cache_info = cache_info
+        self.image_dir = image_dir
+
+    def __eq__(self, other) -> bool:
+        return self.hf_dataset == other.hf_dataset
+
+
 
 class BaseDataset(torch.utils.data.Dataset):
     def __init__(
@@ -2161,6 +2217,108 @@ class ControlNetDataset(BaseDataset):
 
         return example
 
+
+
+class HfDatasetDataset(BaseDataset):
+    def __init__(
+        self,
+        subsets: Sequence[HfDatasetSubset],
+        batch_size: int,
+        tokenizer,
+        max_token_length,
+        resolution,
+        enable_bucket: bool,
+        min_bucket_reso: int,
+        max_bucket_reso: int,
+        bucket_reso_steps: int,
+        bucket_no_upscale: bool,
+        network_multiplier: float = 1.0,
+        debug_dataset: bool = False,
+    ):
+        super().__init__(tokenizer, max_token_length, resolution, network_multiplier, debug_dataset)
+
+        assert resolution is not None, "resolution is required / resolution（解像度）は必須です"
+
+        self.batch_size = batch_size
+        self.size = min(self.width, self.height)
+        self.enable_bucket = enable_bucket
+        if self.enable_bucket:
+            self.min_bucket_reso = min_bucket_reso
+            self.max_bucket_reso = max_bucket_reso
+            self.bucket_reso_steps = bucket_reso_steps
+            self.bucket_no_upscale = bucket_no_upscale
+        else:
+            self.min_bucket_reso = None
+            self.max_bucket_reso = None
+            self.bucket_reso_steps = None
+            self.bucket_no_upscale = None
+
+        def read_caption(caption_file):
+            with open(caption_file, "rt", encoding="utf-8") as f:
+                return f.readlines()[0].strip()
+
+        def load_hf_dataset(subset: HfDatasetSubset):
+            try:
+                from datasets import load_dataset
+            except ImportError:
+                raise ImportError("Please install datasets library: pip install datasets")
+            
+            logger.info(f"loading HuggingFace dataset: {subset.hf_dataset}")
+            
+            # Load the dataset from HuggingFace
+            hf_data = load_dataset(subset.hf_dataset)
+            
+            # Assuming the dataset has 'train' split and 'image' and 'text' columns
+            # Adjust these based on actual dataset structure
+            if 'train' in hf_data:
+                split_data = hf_data['train']
+            else:
+                split_data = hf_data[list(hf_data.keys())[0]]
+            
+            image_infos = []
+            for idx, item in enumerate(split_data):
+                # Handle different possible column names
+                caption = None
+                image = None
+                
+                # Try to get caption from various possible column names
+                for caption_key in ['text', 'caption', 'label', 'prompt']:
+                    if caption_key in item:
+                        caption = item[caption_key]
+                        break
+                
+                # Try to get image from various possible column names
+                for image_key in ['image', 'img', 'picture']:
+                    if image_key in item:
+                        image = item[image_key]
+                        break
+                
+                if image is not None and caption is not None:
+                    # Save image temporarily or use image directly
+                    # For now, we'll create an ImageInfo with the HF dataset index as key
+                    image_key = f"hf_{subset.hf_dataset}_{idx}"
+                    image_info = ImageInfo(image_key, subset.num_repeats, caption, False, "")
+                    image_info.hf_image = image  # Store HF image object
+                    image_infos.append(image_info)
+            
+            logger.info(f"loaded {len(image_infos)} images from HuggingFace dataset")
+            return image_infos
+
+        logger.info("prepare HuggingFace dataset images.")
+        for i, subset in enumerate(subsets):
+            logger.info(f"loading HuggingFace dataset from: {subset.hf_dataset}")
+            img_infos = load_hf_dataset(subset)
+            subset.img_count = len(img_infos)
+
+            for img_info in img_infos:
+                self.register_image(img_info, subset)
+
+        logger.info(f"total HuggingFace dataset image count: {len(self.image_data)}")
+
+    def __getitem__(self, index):
+        # Similar to FineTuningDataset but adapted for HF datasets
+        # This will need to handle the HF image objects stored in image_info
+        return super().__getitem__(index)
 
 # behave as Dataset mock
 class DatasetGroup(torch.utils.data.ConcatDataset):
@@ -3762,6 +3920,7 @@ def add_dataset_arguments(
     parser.add_argument(
         "--train_data_dir", type=str, default=None, help="directory for train images / 学習画像データのディレクトリ"
     )
+    parser.add_argument("--hf_dataset", type=str, default=None, help="HuggingFace dataset name or path / HuggingFaceデータセット名またはパス")
     parser.add_argument(
         "--cache_info",
         action="store_true",
