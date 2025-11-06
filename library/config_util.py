@@ -458,17 +458,11 @@ class BlueprintGenerator:
 
         dataset_blueprints = []
         for dataset_config in sanitized_user_config.get("datasets", []):
-            # NOTE: Check dataset type in priority order: ControlNet > HF > DreamBooth > FineTuning
+            # NOTE: if subsets have no "metadata_file", these are DreamBooth datasets/subsets
             subsets = dataset_config.get("subsets", [])
+            is_dreambooth = all(["metadata_file" not in subset and "hf_dataset" not in subset for subset in subsets])
             is_controlnet = all(["conditioning_data_dir" in subset for subset in subsets])
             is_hf_dataset = all(["hf_dataset" in subset for subset in subsets])
-            is_dreambooth = all([
-                "metadata_file" not in subset and
-                "hf_dataset" not in subset and
-                "conditioning_data_dir" not in subset
-                for subset in subsets
-            ])
-            
             if is_controlnet:
                 subset_params_klass = ControlNetSubsetParams
                 dataset_params_klass = ControlNetDatasetParams
@@ -520,7 +514,7 @@ class BlueprintGenerator:
 
 
 def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlueprint):
-    datasets: List[Union[DreamBoothDataset, FineTuningDataset, ControlNetDataset]] = []
+    datasets: List[Union[DreamBoothDataset, FineTuningDataset, ControlNetDataset, HfDatasetDataset]] = []
 
     for dataset_blueprint in dataset_group_blueprint.datasets:
         if dataset_blueprint.is_controlnet:
@@ -540,7 +534,7 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
             else:
                 subset_klass = FineTuningSubset
                 dataset_klass = FineTuningDataset
-
+        print(subset_blueprint.params)
         subsets = [subset_klass(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
         dataset = dataset_klass(subsets=subsets, **asdict(dataset_blueprint.params))
         datasets.append(dataset)
