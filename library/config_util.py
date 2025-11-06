@@ -458,11 +458,17 @@ class BlueprintGenerator:
 
         dataset_blueprints = []
         for dataset_config in sanitized_user_config.get("datasets", []):
-            # NOTE: if subsets have no "metadata_file", these are DreamBooth datasets/subsets
+            # NOTE: Check dataset type in priority order: ControlNet > HF > DreamBooth > FineTuning
             subsets = dataset_config.get("subsets", [])
-            is_dreambooth = all(["metadata_file" not in subset for subset in subsets])
             is_controlnet = all(["conditioning_data_dir" in subset for subset in subsets])
             is_hf_dataset = all(["hf_dataset" in subset for subset in subsets])
+            is_dreambooth = all([
+                "metadata_file" not in subset and
+                "hf_dataset" not in subset and
+                "conditioning_data_dir" not in subset
+                for subset in subsets
+            ])
+            
             if is_controlnet:
                 subset_params_klass = ControlNetSubsetParams
                 dataset_params_klass = ControlNetDatasetParams
