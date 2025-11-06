@@ -167,6 +167,19 @@ class NetworkTrainer:
                             ", ".join(ignored)
                         )
                     )
+            elif args.hf_dataset is not None:
+                logger.info(f"Using HuggingFace dataset: {args.hf_dataset}")
+                user_config = {
+                    "datasets": [
+                        {
+                            "subsets": [
+                                {
+                                    "hf_dataset": args.hf_dataset,
+                                }
+                            ]
+                        }
+                    ]
+                }
             else:
                 if use_dreambooth_method:
                     logger.info("Using DreamBooth method.")
@@ -1232,6 +1245,12 @@ def setup_parser() -> argparse.ArgumentParser:
         default=None,
         help="initial step number including all epochs, 0 means first step (same as not specifying). overwrites initial_epoch."
         + " / 初期ステップ数、全エポックを含むステップ数、0で最初のステップ（未指定時と同じ）。initial_epochを上書きする",
+    )
+    parser.add_argument(
+        "--hf_dataset",
+        type=str,
+        default=None,
+        help="HuggingFace dataset name or path for training / トレーニング用のHuggingFaceデータセット名またはパス",
     )
     # parser.add_argument("--loraplus_lr_ratio", default=None, type=float, help="LoRA+ learning rate ratio")
     # parser.add_argument("--loraplus_unet_lr_ratio", default=None, type=float, help="LoRA+ UNet learning rate ratio")
