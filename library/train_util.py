@@ -2270,7 +2270,7 @@ class HfDatasetDataset(BaseDataset):
                 abs_path = f"./{i}.npz"
 
                 caption = sample.get("caption")
-                tags = sample.get("tags")
+                tags = sample.get("text")
                 if caption is None:
                     caption = tags  # could be multiline
                     tags = None
