@@ -2238,9 +2238,10 @@ class HfDatasetDataset(BaseDataset):
         bucket_reso_steps: int,
         bucket_no_upscale: bool,
         debug_dataset: bool,
+        hf_dataset: str,
     ) -> None:
         super().__init__(tokenizer, max_token_length, resolution, network_multiplier, debug_dataset)
-
+        from datasets import load_dataset
         self.batch_size = batch_size
 
         self.num_train_images = 0
@@ -2249,78 +2250,27 @@ class HfDatasetDataset(BaseDataset):
         for subset in subsets:
             if subset.num_repeats < 1:
                 logger.warning(
-                    f"ignore subset: num_repeats is less than 1 / num_repeatsが1を下回っているためサブセットを無視します: {subset.num_repeats}"
+                    f"ignore subset with metadata_file='{subset.metadata_file}': num_repeats is less than 1 / num_repeatsが1を下回っているためサブセットを無視します: {subset.num_repeats}"
                 )
                 continue
 
             if subset in self.subsets:
                 logger.warning(
-                    f"ignore duplicated subset: use the first one / 既にサブセットが登録されているため、重複した後発のサブセットを無視します"
-                )
-                continue
-
-            # Check if this is a HuggingFace dataset or metadata file based dataset
-            if hasattr(subset, 'hf_dataset') and subset.hf_dataset:
-                # Load from HuggingFace dataset
-                logger.info(f"loading from HuggingFace dataset: {subset.hf_dataset}")
-                image_infos = self.load_hf_dataset(subset)
-                
-                if len(image_infos) < 1:
-                    logger.warning(
-                        f"ignore subset with hf_dataset='{subset.hf_dataset}': no image entries found / 画像に関するデータが見つからないためサブセットを無視します"
-                    )
-                    continue
-                
-                # Register all images from HF dataset
-                for image_info in image_infos:
-                    self.register_image(image_info, subset)
-                
-                self.num_train_images += len(image_infos) * subset.num_repeats
-                subset.img_count = len(image_infos)
-                self.subsets.append(subset)
-                continue
-            
-            # メタデータを読み込む (fallback to metadata file)
-            if hasattr(subset, 'metadata_file') and subset.metadata_file and os.path.exists(subset.metadata_file):
-                logger.info(f"loading existing metadata: {subset.metadata_file}")
-                with open(subset.metadata_file, "rt", encoding="utf-8") as f:
-                    metadata = json.load(f)
-            else:
-                raise ValueError(f"subset must have either 'hf_dataset' or 'metadata_file' / subsetにはhf_datasetまたはmetadata_fileが必要です")
-
-            if len(metadata) < 1:
-                logger.warning(
-                    f"ignore subset with '{subset.metadata_file}': no image entries found / 画像に関するデータが見つからないためサブセットを無視します"
+                    f"ignore duplicated subset with metadata_file='{subset.metadata_file}': use the first one / 既にサブセットが登録されているため、重複した後発のサブセットを無視します"
                 )
                 continue
 
             tags_list = []
-            for image_key, img_md in metadata.items():
+            dataset = load_dataset(hf_dataset, split="train")
+            for i,sample in enumerate(dataset):
                 # path情報を作る
                 abs_path = None
 
-                # まず画像を優先して探す
-                if os.path.exists(image_key):
-                    abs_path = image_key
-                else:
-                    # わりといい加減だがいい方法が思いつかん
-                    paths = glob_images(subset.image_dir, image_key)
-                    if len(paths) > 0:
-                        abs_path = paths[0]
 
-                # なければnpzを探す
-                if abs_path is None:
-                    if os.path.exists(os.path.splitext(image_key)[0] + ".npz"):
-                        abs_path = os.path.splitext(image_key)[0] + ".npz"
-                    else:
-                        npz_path = os.path.join(subset.image_dir, image_key + ".npz")
-                        if os.path.exists(npz_path):
-                            abs_path = npz_path
+                abs_path = f"./{i}.npz"
 
-                assert abs_path is not None, f"no image / 画像がありません: {image_key}"
-
-                caption = img_md.get("caption")
-                tags = img_md.get("tags")
+                caption = sample.get("caption")
+                tags = sample.get("tags")
                 if caption is None:
                     caption = tags  # could be multiline
                     tags = None
@@ -2344,20 +2294,20 @@ class HfDatasetDataset(BaseDataset):
                 if caption is None:
                     caption = ""
 
-                image_info = ImageInfo(image_key, subset.num_repeats, caption, False, abs_path)
-                image_info.image_size = img_md.get("train_resolution")
+                image_info = ImageInfo(abs_path, subset.num_repeats, caption, False, abs_path,image=sample.get("image"))
+                image_info.image_size = sample["image"].shape[:2]
 
                 if not subset.color_aug and not subset.random_crop:
                     # if npz exists, use them
-                    image_info.latents_npz, image_info.latents_npz_flipped = self.image_key_to_npz_file(subset, image_key)
+                    image_info.latents_npz, image_info.latents_npz_flipped = self.image_key_to_npz_file(subset, abs_path)
 
                 self.register_image(image_info, subset)
 
-            self.num_train_images += len(metadata) * subset.num_repeats
+            self.num_train_images += len(dataset) * subset.num_repeats
 
             # TODO do not record tag freq when no tag
             self.set_tag_frequency(os.path.basename(subset.metadata_file), tags_list)
-            subset.img_count = len(metadata)
+            subset.img_count = len(dataset)
             self.subsets.append(subset)
 
         # check existence of all npz files
@@ -2470,71 +2420,6 @@ class HfDatasetDataset(BaseDataset):
             npz_file_flip = None
 
         return npz_file_norm, npz_file_flip
-    def load_hf_dataset(self,subset: HfDatasetSubset):
-        try:
-            from datasets import load_dataset
-        except ImportError:
-            raise ImportError("Please install datasets library: pip install datasets")
-        
-        logger.info(f"loading HuggingFace dataset: {subset.hf_dataset}")
-        
-        # Load the dataset from HuggingFace
-        hf_data = load_dataset(subset.hf_dataset)
-        
-        # Assuming the dataset has 'train' split and 'image' and 'text' columns
-        # Adjust these based on actual dataset structure
-        if 'train' in hf_data:
-            split_data = hf_data['train']
-        else:
-            split_data = hf_data[list(hf_data.keys())[0]]
-        
-        image_infos = []
-        for idx, item in enumerate(split_data):
-            # Handle different possible column names
-            caption = None
-            image = None
-            
-            # Try to get caption from various possible column names
-            for caption_key in ['text', 'caption', 'label', 'prompt']:
-                if caption_key in item:
-                    caption = item[caption_key]
-                    break
-            
-            # Try to get image from various possible column names
-            for image_key in ['image', 'img', 'picture']:
-                if image_key in item:
-                    image = item[image_key]
-                    break
-            
-            if image is not None and caption is not None:
-                # Save image temporarily or use image directly
-                # For now, we'll create an ImageInfo with the HF dataset index as key
-                image_key = f"hf_{subset.hf_dataset}_{idx}"
-                image_info = ImageInfo(image_key, subset.num_repeats, caption, False, "")
-                image_info.hf_image = image  # Store HF image object
-                
-                # Get image size directly from HF image object
-                if hasattr(image, 'size'):
-                    # PIL Image has size attribute (width, height)
-                    image_info.image_size = image.size
-                elif hasattr(image, 'width') and hasattr(image, 'height'):
-                    # Some image objects have width/height attributes
-                    image_info.image_size = (image.width, image.height)
-                else:
-                    # Fallback: try to get size
-                    try:
-                        from PIL import Image as PILImage
-                        if hasattr(image, 'shape'):  # numpy array
-                            image_info.image_size = (image.shape[1], image.shape[0])  # (width, height)
-                        else:
-                            image_info.image_size = None
-                    except:
-                        image_info.image_size = None
-                
-                image_infos.append(image_info)
-        
-        logger.info(f"loaded {len(image_infos)} images from HuggingFace dataset")
-        return image_infos
 
 
 # behave as Dataset mock
