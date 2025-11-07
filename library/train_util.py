@@ -2238,7 +2238,6 @@ class HfDatasetDataset(BaseDataset):
         bucket_reso_steps: int,
         bucket_no_upscale: bool,
         debug_dataset: bool,
-        hf_dataset: str,
     ) -> None:
         super().__init__(tokenizer, max_token_length, resolution, network_multiplier, debug_dataset)
         from datasets import load_dataset
@@ -2261,7 +2260,7 @@ class HfDatasetDataset(BaseDataset):
                 continue
 
             tags_list = []
-            dataset = load_dataset(hf_dataset, split="train")
+            dataset = load_dataset(subset.hf_dataset, split="train")
             for i,sample in enumerate(dataset):
                 # path情報を作る
                 abs_path = None
