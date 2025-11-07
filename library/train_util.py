@@ -2293,7 +2293,8 @@ class HfDatasetDataset(BaseDataset):
                 if caption is None:
                     caption = ""
 
-                image_info = ImageInfo(abs_path, subset.num_repeats, caption, False, abs_path,image=sample.get("image"))
+                image_info = ImageInfo(abs_path, subset.num_repeats, caption, False, abs_path)
+                image_info.image = sample.get("image")
                 image_info.image_size = sample["image"].shape[:2]
 
                 if not subset.color_aug and not subset.random_crop:
