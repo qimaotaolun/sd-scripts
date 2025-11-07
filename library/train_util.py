@@ -962,7 +962,8 @@ class BaseDataset(torch.utils.data.Dataset):
         logger.info("loading image sizes.")
         for info in tqdm(self.image_data.values()):
             if info.image_size is None:
-                info.image_size = self.get_image_size(info.absolute_path)
+                # info.image_size = self.get_image_size(info.absolute_path)
+                info.image_size = info.image.size
 
         if self.enable_bucket:
             logger.info("make buckets")
@@ -2266,7 +2267,7 @@ class HfDatasetDataset(BaseDataset):
                 abs_path = None
 
 
-                abs_path = f"/kaggle/working/{i}.npz"
+                abs_path = f"./{i}.npz"
 
                 caption = sample.get("caption")
                 tags = sample.get("tags")
