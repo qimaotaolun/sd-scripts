@@ -2295,7 +2295,6 @@ class HfDatasetDataset(BaseDataset):
 
                 image_info = ImageInfo(abs_path, subset.num_repeats, caption, False, abs_path)
                 image_info.image = sample.get("image")
-                image_info.image_size = sample["image"].size
 
                 if not subset.color_aug and not subset.random_crop:
                     # if npz exists, use them
