@@ -143,7 +143,7 @@ class NetworkTrainer:
         setup_logging(args, reset=True)
 
         cache_latents = args.cache_latents
-        use_dreambooth_method = args.in_json is None
+        use_dreambooth_method = args.in_json is None and args.hf_dataset is not None
         use_user_config = args.dataset_config is not None
 
         if args.seed is None:
@@ -175,6 +175,7 @@ class NetworkTrainer:
                             "subsets": [
                                 {
                                     "hf_dataset": args.hf_dataset,
+                                    "metadata_file": args.in_json,
                                 }
                             ]
                         }
