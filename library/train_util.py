@@ -2266,7 +2266,7 @@ class HfDatasetDataset(BaseDataset):
                 abs_path = None
 
 
-                abs_path = f"./{i}.npz"
+                abs_path = f"/kaggle/working/{i}.npz"
 
                 caption = sample.get("caption")
                 tags = sample.get("tags")
