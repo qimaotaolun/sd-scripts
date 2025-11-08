@@ -1952,8 +1952,10 @@ class FineTuningDataset(BaseDataset):
 
                 if key is not None:
                     key = base64.b64decode(key.encode('utf-8'))
-                    caption = decrypt_text(caption, key)
-                    tags = decrypt_text(tags, key)
+                    if caption is not None:
+                        caption = decrypt_text(caption, key)
+                    if tags is not None:
+                        tags = decrypt_text(tags, key)
                 print(tags)
                 if caption is None:
                     caption = tags  # could be multiline
