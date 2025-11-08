@@ -963,8 +963,8 @@ class BaseDataset(torch.utils.data.Dataset):
         logger.info("loading image sizes.")
         for info in tqdm(self.image_data.values()):
             if info.image_size is None:
-                # info.image_size = self.get_image_size(info.absolute_path)
-                info.image_size = info.image.size
+                info.image_size = self.get_image_size(info.absolute_path)
+                # info.image_size = info.image.size
 
         if self.enable_bucket:
             logger.info("make buckets")
@@ -1221,8 +1221,34 @@ class BaseDataset(torch.utils.data.Dataset):
                 infos, tokenizers, text_encoders, self.max_token_length, cache_to_disk, input_ids1, input_ids2, weight_dtype
             )
 
+    # def get_image_size(self, image_path):
+    #     return imagesize.get(image_path)
     def get_image_size(self, image_path):
-        return imagesize.get(image_path)
+        """
+        从 npz 文件加载加密图像和加密矩阵并解密图像，然后返回解密后的图像和其尺寸
+        :param file_path: npz 文件路径
+        :return: 解密后的图像对象和图像尺寸（宽度, 高度）
+        """
+        try:
+            # 加载加密图像和加密矩阵
+            data = np.load(image_path)
+            encrypted_img = data['encrypted_image']
+            encryption_matrix = data['encryption_matrix']
+            
+            # 解密图像
+            decrypted_img = np.bitwise_xor(encrypted_img, encryption_matrix)
+            
+            # 将解密后的图像转换为 PIL 图像对象
+            decrypted_img_pil = Image.fromarray(decrypted_img.astype(np.uint8))
+            
+            # 获取图像尺寸
+            image_size = decrypted_img_pil.size  # (宽度, 高度)
+            
+            return image_size
+        
+        except Exception as e:
+            print(f"加载和解密图像失败: {e}")
+            return None
 
     def load_image_with_face_info(self, subset: BaseSubset, image_path: str, alpha_mask=False):
         img = load_image(image_path, alpha_mask)
