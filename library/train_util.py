@@ -150,6 +150,7 @@ class ImageInfo:
         self.is_reg: bool = is_reg
         self.absolute_path: str = absolute_path
         self.image_size: Tuple[int, int] = None
+        self.image: Image = None
         self.resized_size: Tuple[int, int] = None
         self.bucket_reso: Tuple[int, int] = None
         self.latents: torch.Tensor = None
@@ -164,40 +165,6 @@ class ImageInfo:
         self.text_encoder_outputs2: Optional[torch.Tensor] = None
         self.text_encoder_pool2: Optional[torch.Tensor] = None
         self.alpha_mask: Optional[torch.Tensor] = None  # alpha mask can be flipped in runtime
-        self.hf_dataset: Optional[Dataset] = None  # Store the actual dataset object, not just the string name
-        
-    def _load_from_hf(self, index: int):
-        """ Helper method to load image from Hugging Face dataset by index """
-        if self.hf_dataset is None:
-            raise ValueError("Hugging Face dataset not loaded.")
-        
-        # 使用索引获取数据集中的图像数据
-        if index >= len(self.hf_dataset):
-            raise IndexError(f"Index {index} is out of range for dataset.")
-        
-        # 获取对应索引的图像数据
-        image_data = self.hf_dataset[index]['image']  # 假设字段名为 'image'
-        
-        if isinstance(image_data, Image.Image):
-            return image_data
-        else:
-            # 如果返回的是 numpy 数组或其他格式，将其转换为 PIL 图像
-            return Image.fromarray(image_data)
-
-    @property
-    def image(self):
-        """ Property to load image by index if `_image` is set. """
-        if isinstance(self._image, int):
-            return self._load_from_hf(self._image)
-        raise ValueError("image must be an integer index to load from dataset")
-
-    @image.setter
-    def image(self, value: int):
-        """ Setter for image, takes an integer index to load the image. """
-        if isinstance(value, int):
-            self._image = value  # 保存为图像索引
-        else:
-            raise ValueError("image must be an integer index to load from dataset")
 
 
 class BucketManager:
@@ -2779,21 +2746,36 @@ def load_arbitrary_dataset(args, tokenizer) -> MinimalDataset:
     return train_dataset_group
 
 
-def load_image(image_path, alpha=False):
+# def load_image(image_path, alpha=False):
+#     try:
+#         with Image.open(image_path) as image:
+#             if alpha:
+#                 if not image.mode == "RGBA":
+#                     image = image.convert("RGBA")
+#             else:
+#                 if not image.mode == "RGB":
+#                     image = image.convert("RGB")
+#             img = np.array(image, np.uint8)
+#             return img
+#     except (IOError, OSError) as e:
+#         logger.error(f"Error loading file: {image_path}")
+#         raise e
+def load_image(file_path, alpha=False):
+    """
+    从 npz 文件加载加密图像和加密矩阵并解密图像
+    :param file_path: npz 文件路径
+    :return: 解密后的图像
+    """
     try:
-        with Image.open(image_path) as image:
-            if alpha:
-                if not image.mode == "RGBA":
-                    image = image.convert("RGBA")
-            else:
-                if not image.mode == "RGB":
-                    image = image.convert("RGB")
-            img = np.array(image, np.uint8)
-            return img
-    except (IOError, OSError) as e:
-        logger.error(f"Error loading file: {image_path}")
-        raise e
-
+        data = np.load(file_path)
+        encrypted_img = data['encrypted_image']
+        encryption_matrix = data['encryption_matrix']
+        # 解密图像
+        decrypted_img = np.bitwise_xor(encrypted_img, encryption_matrix)
+        return decrypted_img
+    except Exception as e:
+        print(f"加载和解密图像失败: {e}")
+        return None
 
 # 画像を読み込む。戻り値はnumpy.ndarray,(original width, original height),(crop left, crop top, crop right, crop bottom)
 def trim_and_resize_if_required(
