@@ -84,7 +84,8 @@ logger = logging.getLogger(__name__)
 # from library.attention_processors import FlashAttnProcessor
 # from library.hypernetwork import replace_attentions_for_hypernetwork
 from library.original_unet import UNet2DConditionModel
-from datasets import Dataset
+import base64
+from cryptography.fernet import Fernet
 
 # Tokenizer: checkpointから読み込むのではなくあらかじめ提供されているものを使う
 TOKENIZER_PATH = "openai/clip-vit-large-patch14"
@@ -1843,7 +1844,33 @@ class DreamBoothDataset(BaseDataset):
 
         self.num_reg_images = num_reg_images
 
-
+def decrypt_text(encrypted_text: str, key: bytes) -> str:
+    """
+    解密单个文本
+    
+    参数:
+        encrypted_text: Base64编码的加密文本
+        key: 用于解密的密钥（bytes类型）
+    
+    返回:
+        解密后的原始文本
+    """
+    try:
+        # 创建Fernet密码对象
+        cipher = Fernet(key)
+        
+        # 将Base64编码的文本解码为bytes
+        encrypted_bytes = base64.b64decode(encrypted_text.encode('utf-8'))
+        
+        # 解密
+        decrypted_bytes = cipher.decrypt(encrypted_bytes)
+        
+        # 将bytes转换为字符串
+        decrypted_text = decrypted_bytes.decode('utf-8')
+        
+        return decrypted_text
+    except Exception as e:
+        raise Exception(f"解密失败: {str(e)}")
 class FineTuningDataset(BaseDataset):
     def __init__(
         self,
@@ -1921,6 +1948,12 @@ class FineTuningDataset(BaseDataset):
 
                 caption = img_md.get("caption")
                 tags = img_md.get("tags")
+                key = img_md.get("key")
+
+                if key is not None:
+                    caption = decrypt_text(caption, key)
+                    tags = decrypt_text(tags, key)
+                print(tags)
                 if caption is None:
                     caption = tags  # could be multiline
                     tags = None
