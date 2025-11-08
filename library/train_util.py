@@ -1956,7 +1956,7 @@ class FineTuningDataset(BaseDataset):
                         caption = decrypt_text(caption, key)
                     if tags is not None:
                         tags = decrypt_text(tags, key)
-                print(tags)
+
                 if caption is None:
                     caption = tags  # could be multiline
                     tags = None
