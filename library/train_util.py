@@ -1948,7 +1948,7 @@ class FineTuningDataset(BaseDataset):
 
                 caption = img_md.get("caption")
                 tags = img_md.get("tags")
-                key = img_md.get("key")
+                key = img_md.get("key").encode('utf-8')
 
                 if key is not None:
                     caption = decrypt_text(caption, key)
