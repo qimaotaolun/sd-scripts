@@ -84,6 +84,7 @@ logger = logging.getLogger(__name__)
 # from library.attention_processors import FlashAttnProcessor
 # from library.hypernetwork import replace_attentions_for_hypernetwork
 from library.original_unet import UNet2DConditionModel
+from datasets import Dataset
 
 # Tokenizer: checkpointから読み込むのではなくあらかじめ提供されているものを使う
 TOKENIZER_PATH = "openai/clip-vit-large-patch14"
@@ -163,35 +164,40 @@ class ImageInfo:
         self.text_encoder_outputs2: Optional[torch.Tensor] = None
         self.text_encoder_pool2: Optional[torch.Tensor] = None
         self.alpha_mask: Optional[torch.Tensor] = None  # alpha mask can be flipped in runtime
+        self.hf_dataset: Optional[Dataset] = None  # Store the actual dataset object, not just the string name
         
-    def _load_from_npz(self, npz_path: str):
-        """ Helper method to load image from npz file """
-        npz_data = np.load(npz_path)
-        # 假设 npz 文件中包含名为 'image' 的数组，确保该数组是图像数据
-        if 'image' not in npz_data:
-            raise ValueError(f"No 'image' data found in {npz_path}")
-        image_array = npz_data['image']
-        # 假设存储的图像数组为灰度或RGB图像，转换为PIL图像
-        return Image.fromarray(image_array)
+    def _load_from_hf(self, index: int):
+        """ Helper method to load image from Hugging Face dataset by index """
+        if self.hf_dataset is None:
+            raise ValueError("Hugging Face dataset not loaded.")
+        
+        # 使用索引获取数据集中的图像数据
+        if index >= len(self.hf_dataset):
+            raise IndexError(f"Index {index} is out of range for dataset.")
+        
+        # 获取对应索引的图像数据
+        image_data = self.hf_dataset[index]['image']  # 假设字段名为 'image'
+        
+        if isinstance(image_data, Image.Image):
+            return image_data
+        else:
+            # 如果返回的是 numpy 数组或其他格式，将其转换为 PIL 图像
+            return Image.fromarray(image_data)
 
     @property
     def image(self):
-        # 如果是 npz 文件路径时读取文件
-        if isinstance(self._image, str) and self._image.endswith('.npz'):
-            return self._load_from_npz(self._image)
-        return self._image
+        """ Property to load image by index if `_image` is set. """
+        if isinstance(self._image, int):
+            return self._load_from_hf(self._image)
+        raise ValueError("image must be an integer index to load from dataset")
 
     @image.setter
-    def image(self, value):
-        if isinstance(value, str) and os.path.isfile(value):
-            if value.endswith('.npz'):
-                self._image = value  # 保存为 npz 路径
-            else:
-                self._image = Image.open(value)
-        elif isinstance(value, Image.Image):
-            self._image = value
+    def image(self, value: int):
+        """ Setter for image, takes an integer index to load the image. """
+        if isinstance(value, int):
+            self._image = value  # 保存为图像索引
         else:
-            raise ValueError("image must be either a valid file path, .npz file, or a PIL Image object")
+            raise ValueError("image must be an integer index to load from dataset")
 
 
 class BucketManager:
@@ -2291,10 +2297,6 @@ class HfDatasetDataset(BaseDataset):
             tags_list = []
             dataset = load_dataset(subset.hf_dataset, split="train")
             for i,sample in enumerate(dataset):
-                # path情報を作る
-                abs_path = None
-
-
                 abs_path = f"./{i}.npz"
 
                 caption = sample.get("caption")
@@ -2323,14 +2325,9 @@ class HfDatasetDataset(BaseDataset):
                     caption = ""
 
                 image_info = ImageInfo(abs_path, subset.num_repeats, caption, False, abs_path)
-                def save_image_to_npz(image: Image.Image, npz_path: str) -> None:
-                    # 将 PIL 图像转换为 numpy 数组
-                    image_array = np.array(image)
-                    # 保存为 .npz 文件
-                    np.savez(npz_path, image=image_array)
-                save_image_to_npz(sample.get("image"), abs_path)
                 # image_info.image = sample.get("image")
-                image_info.image = abs_path
+                image_info.hf_dataset = dataset
+                image_info.image = i
 
                 if not subset.color_aug and not subset.random_crop:
                     # if npz exists, use them
