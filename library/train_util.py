@@ -157,13 +157,41 @@ class ImageInfo:
         self.latents_original_size: Tuple[int, int] = None  # original image size, not latents size
         self.latents_crop_ltrb: Tuple[int, int] = None  # crop left top right bottom in original pixel size, not latents size
         self.cond_img_path: str = None
-        self.image: Optional[Image.Image] = None  # optional, original PIL Image
         # SDXL, optional
         self.text_encoder_outputs_npz: Optional[str] = None
         self.text_encoder_outputs1: Optional[torch.Tensor] = None
         self.text_encoder_outputs2: Optional[torch.Tensor] = None
         self.text_encoder_pool2: Optional[torch.Tensor] = None
         self.alpha_mask: Optional[torch.Tensor] = None  # alpha mask can be flipped in runtime
+        
+    def _load_from_npz(self, npz_path: str):
+        """ Helper method to load image from npz file """
+        npz_data = np.load(npz_path)
+        # 假设 npz 文件中包含名为 'image' 的数组，确保该数组是图像数据
+        if 'image' not in npz_data:
+            raise ValueError(f"No 'image' data found in {npz_path}")
+        image_array = npz_data['image']
+        # 假设存储的图像数组为灰度或RGB图像，转换为PIL图像
+        return Image.fromarray(image_array)
+
+    @property
+    def image(self):
+        # 如果是 npz 文件路径时读取文件
+        if isinstance(self._image, str) and self._image.endswith('.npz'):
+            return self._load_from_npz(self._image)
+        return self._image
+
+    @image.setter
+    def image(self, value):
+        if isinstance(value, str) and os.path.isfile(value):
+            if value.endswith('.npz'):
+                self._image = value  # 保存为 npz 路径
+            else:
+                self._image = Image.open(value)
+        elif isinstance(value, Image.Image):
+            self._image = value
+        else:
+            raise ValueError("image must be either a valid file path, .npz file, or a PIL Image object")
 
 
 class BucketManager:
@@ -2295,7 +2323,14 @@ class HfDatasetDataset(BaseDataset):
                     caption = ""
 
                 image_info = ImageInfo(abs_path, subset.num_repeats, caption, False, abs_path)
-                image_info.image = sample.get("image")
+                def save_image_to_npz(image: Image.Image, npz_path: str) -> None:
+                    # 将 PIL 图像转换为 numpy 数组
+                    image_array = np.array(image)
+                    # 保存为 .npz 文件
+                    np.savez(npz_path, image=image_array)
+                save_image_to_npz(sample.get("image"), abs_path)
+                # image_info.image = sample.get("image")
+                image_info.image = abs_path
 
                 if not subset.color_aug and not subset.random_crop:
                     # if npz exists, use them
