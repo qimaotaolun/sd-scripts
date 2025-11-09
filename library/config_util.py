@@ -35,11 +35,9 @@ from .train_util import (
     DreamBoothSubset,
     FineTuningSubset,
     ControlNetSubset,
-    HfDatasetSubset,
     DreamBoothDataset,
     FineTuningDataset,
     ControlNetDataset,
-    HfDatasetDataset,
     DatasetGroup,
 )
 from .utils import setup_logging
@@ -142,26 +140,17 @@ class ControlNetDatasetParams(BaseDatasetParams):
     bucket_reso_steps: int = 64
     bucket_no_upscale: bool = False
 
-@dataclass
-class HfDatasetDatasetParams(BaseDatasetParams):
-    batch_size: int = 1
-    enable_bucket: bool = False
-    min_bucket_reso: int = 256
-    max_bucket_reso: int = 1024
-    bucket_reso_steps: int = 64
-    bucket_no_upscale: bool = False
-
 
 @dataclass
 class SubsetBlueprint:
-    params: Union[DreamBoothSubsetParams, FineTuningSubsetParams, HfDatasetSubsetParams]
+    params: Union[DreamBoothSubsetParams, FineTuningSubsetParams]
 
 
 @dataclass
 class DatasetBlueprint:
     is_dreambooth: bool
     is_controlnet: bool
-    params: Union[DreamBoothDatasetParams, FineTuningDatasetParams, HfDatasetDatasetParams]
+    params: Union[DreamBoothDatasetParams, FineTuningDatasetParams]
     subsets: Sequence[SubsetBlueprint]
 
 
@@ -480,7 +469,7 @@ class BlueprintGenerator:
 
 
 def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlueprint):
-    datasets: List[Union[DreamBoothDataset, FineTuningDataset, ControlNetDataset, HfDatasetDataset]] = []
+    datasets: List[Union[DreamBoothDataset, FineTuningDataset, ControlNetDataset]] = []
 
     for dataset_blueprint in dataset_group_blueprint.datasets:
         if dataset_blueprint.is_controlnet:
