@@ -104,14 +104,6 @@ class ControlNetSubsetParams(BaseSubsetParams):
     cache_info: bool = False
 
 @dataclass
-class HfDatasetSubsetParams(BaseSubsetParams):
-    hf_dataset: str = None
-    cache_info: bool = False
-    metadata_file: Optional[str] = None
-    alpha_mask: bool = False
-
-
-@dataclass
 class BaseDatasetParams:
     tokenizer: Union[CLIPTokenizer, List[CLIPTokenizer]] = None
     max_token_length: int = None
@@ -249,12 +241,6 @@ class ConfigSanitizer:
         Required("image_dir"): str,
         Required("conditioning_data_dir"): str,
     }
-    HF_SUBSET_ASCENDABLE_SCHEMA = {
-        "cache_info": bool,
-    }
-    HF_SUBSET_DISTINCT_SCHEMA = {
-        Required("hf_dataset"): str,
-    }
 
     # datasets schema
     DATASET_ASCENDABLE_SCHEMA = {
@@ -311,13 +297,6 @@ class ConfigSanitizer:
             self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
         )
 
-        self.hf_subset_schema = self.__merge_dict(
-            self.SUBSET_ASCENDABLE_SCHEMA,
-            self.HF_SUBSET_DISTINCT_SCHEMA,
-            self.HF_SUBSET_ASCENDABLE_SCHEMA,
-            self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
-        )
-
         self.db_dataset_schema = self.__merge_dict(
             self.DATASET_ASCENDABLE_SCHEMA,
             self.SUBSET_ASCENDABLE_SCHEMA,
@@ -341,13 +320,6 @@ class ConfigSanitizer:
             {"subsets": [self.cn_subset_schema]},
         )
 
-        self.hf_dataset_schema = self.__merge_dict(
-            self.DATASET_ASCENDABLE_SCHEMA,
-            self.SUBSET_ASCENDABLE_SCHEMA,
-            self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
-            {"subsets": [self.hf_subset_schema]},
-        )
-
         if support_dreambooth and support_finetuning:
 
             def validate_flex_dataset(dataset_config: dict):
@@ -355,10 +327,6 @@ class ConfigSanitizer:
 
                 if support_controlnet and all(["conditioning_data_dir" in subset for subset in subsets_config]):
                     return Schema(self.cn_dataset_schema)(dataset_config)
-                # check dataset meets HF style
-                # NOTE: all HF subsets should have "hf_dataset"
-                elif all(["hf_dataset" in subset for subset in subsets_config]):
-                    return Schema(self.hf_dataset_schema)(dataset_config)
                 # check dataset meets FT style
                 # NOTE: all FT subsets should have "metadata_file"
                 elif all(["metadata_file" in subset for subset in subsets_config]):
@@ -462,15 +430,11 @@ class BlueprintGenerator:
         for dataset_config in sanitized_user_config.get("datasets", []):
             # NOTE: if subsets have no "metadata_file", these are DreamBooth datasets/subsets
             subsets = dataset_config.get("subsets", [])
-            is_dreambooth = all(["metadata_file" not in subset and "hf_dataset" not in subset for subset in subsets])
+            is_dreambooth = all(["metadata_file" not in subset for subset in subsets])
             is_controlnet = all(["conditioning_data_dir" in subset for subset in subsets])
-            is_hf_dataset = all(["hf_dataset" in subset for subset in subsets])
             if is_controlnet:
                 subset_params_klass = ControlNetSubsetParams
                 dataset_params_klass = ControlNetDatasetParams
-            elif is_hf_dataset:
-                subset_params_klass = HfDatasetSubsetParams
-                dataset_params_klass = HfDatasetDatasetParams
             elif is_dreambooth:
                 subset_params_klass = DreamBoothSubsetParams
                 dataset_params_klass = DreamBoothDatasetParams
@@ -526,16 +490,8 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
             subset_klass = DreamBoothSubset
             dataset_klass = DreamBoothDataset
         else:
-            # Check if this is an HF dataset by looking at the subset params
-            # If any subset has hf_dataset parameter, treat it as HF dataset
-            is_hf_dataset = any(hasattr(subset_blueprint.params, 'hf_dataset') and subset_blueprint.params.hf_dataset is not None
-                              for subset_blueprint in dataset_blueprint.subsets)
-            if is_hf_dataset:
-                subset_klass = HfDatasetSubset
-                dataset_klass = HfDatasetDataset
-            else:
-                subset_klass = FineTuningSubset
-                dataset_klass = FineTuningDataset
+            subset_klass = FineTuningSubset
+            dataset_klass = FineTuningDataset
         subsets = [subset_klass(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
         dataset = dataset_klass(subsets=subsets, **asdict(dataset_blueprint.params))
         datasets.append(dataset)
