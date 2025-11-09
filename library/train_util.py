@@ -3839,7 +3839,6 @@ def add_dataset_arguments(
     parser.add_argument(
         "--train_data_dir", type=str, default=None, help="directory for train images / 学習画像データのディレクトリ"
     )
-    parser.add_argument("--hf_dataset", type=str, default=None, help="HuggingFace dataset name or path / HuggingFaceデータセット名またはパス")
     parser.add_argument(
         "--cache_info",
         action="store_true",
